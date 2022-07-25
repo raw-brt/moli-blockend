@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: MIT
 
 /*
     Inspired in the almighty Tamagotchi and the works of dhof.eth and m1guelpf.eth
@@ -30,23 +30,25 @@ contract Moli is
 
   // Using blocks to track moli stats
   mapping(uint256 => uint256) internal _lastPlayBlock;
-  mapping(uint256 => uint256) internal _lastWalkBlock;
-  mapping(uint256 => uint256) internal _lastSyncedBlock;
+  mapping(uint256 => uint256) internal _lastFeedBlock;
+  mapping(uint256 => uint256) internal _lastCleanBlock;
 
   // Moli stats
   mapping(uint256 => string) internal _names;
-  mapping(uint256 => uint[9]) internal _dnas;
+  mapping(uint256 => uint256[9]) internal _dnas;
+  mapping(string => uint256) internal _dnasToTokenId;
   mapping(uint256 => uint8) internal _boredom;
-  mapping(uint256 => uint8) internal _sadness;
-  mapping(uint256 => uint8) internal _loneliness;
+  mapping(uint256 => uint8) internal _hunger;
+  mapping(uint256 => uint8) internal _uncleanliness;
 
-  // Methods
+  // Initialize contract
   function initialize(address trustedForwarder) public initializer {
     __Ownable_init();
     __ERC721_init("Moli", "MOL");
     __ERC2771Context_init(trustedForwarder);
   }
 
+  // Methods
   function summon(string calldata name) public returns (uint256) {
     // Set tokenId
     _tokenIds.increment();
@@ -60,23 +62,66 @@ contract Moli is
 
     // Set base stats
     _lastPlayBlock[newTokenId] = block.number;
-    _lastSyncedBlock[newTokenId] = block.number;
-    _lastWalkBlock[newTokenId] = block.number;
+    _lastFeedBlock[newTokenId] = block.number;
+    _lastCleanBlock[newTokenId] = block.number;
     _boredom[newTokenId] = 0;
-    _sadness[newTokenId] = 0;
-    _loneliness[newTokenId] = 0;
+    _hunger[newTokenId] = 0;
+    _uncleanliness[newTokenId] = 0;
+
+    // Get DNA
+
+    // Save DNA
+
+    // Build tokenURI
 
     // Initiate minting
     _mint(_msgSender(), newTokenId);
 
+    emit MoliSummoned(_msgSender(), name);
+
     return newTokenId;
   }
 
-  function play(uint256 tokenId) public doesMoliExists isItYourMoli {
-    // Check if wants to play
-    // Check if it's with us
-    // Check if it's so sad to play
-    // Check if it's so alone to play
+  // Play with your Moli
+  function play(uint256 tokenId) 
+    public 
+    doesMoliExists 
+    isItYourMoli 
+    doesItWantToPlay
+  {
+    _lastPlayBlock[tokenId] = block.number;
+
+    _boredom[tokenId] = 0;
+    _hunger[tokenId] += 5;
+    _uncleanliness[tokenId] += 5;
+  }
+
+  // Feed your Moli
+  function feed(uint256 tokenId)
+    public
+    doesMoliExists
+    isItYourMoli
+    doesItWantToEat
+  {
+    _lastFeedBlock[tokenId] = block.number;
+
+    _hunger[tokenId] = 0;
+    _boredom[tokenId] += 5;
+    _uncleanliness[tokenId] = += 5;
+  }
+
+  // Clean your Moli
+  function clean(uint256 tokenId) 
+    public
+    doesMoliExists
+    isItYourMoli
+    doesItWantToGetClean
+  {
+    _lastCleanBlock[tokenId] = block.number;
+
+    _uncleanliness[tokenId] = 0;
+    _hunger[tokenId] += 5;
+    _boredom[tokenId] += 5;
   }
 
   // Is this Moli alive?
@@ -88,8 +133,8 @@ contract Moli is
   {
     return
       getBoredom(tokenId) < 101 &&
-      getSadness(tokenId) < 101 &&
-      getLoneliness(tokenId) < 101;
+      getHunger(tokenId) < 101 &&
+      getUncleanliness(tokenId) < 101;
   }
 
   // Get boredom stat for a given Moli
@@ -104,42 +149,85 @@ contract Moli is
   }
 
   // Get sadness stat for a given Moli
-  function getSadness(uint256 tokenId)
+  function getHunger(uint256 tokenId)
     public
     view
     doesMoliExists
     returns (uint256)
   {
     return
-      _sadness[tokenId] + ((block.number - _lastWalkBlock[tokenId]) / 1000);
+      _hunger[tokenId] + ((block.number - _lastWalkBlock[tokenId]) / 1000);
   }
 
   // Get loneliness stat for a given Moli
-  function getLoneliness(uint256 tokenId)
+  function getUncleanliness(uint256 tokenId)
     public
     view
     doesMoliExists
     returns (uint256)
   {
     return
-      _loneliness[tokenId] +
+      _uncleanliness[tokenId] +
       ((block.number - _lastSyncedBlock[tokenId]) / 1000);
   }
 
-  // Get random available DNA
-  function getRandomDNA() returns (uint[9]) {
+  // Get random available DNA. TOD: CHANGE TO INTERNAL ONCE TESTED
+  function getRandomDNA() public returns (uint[9]) {
+    uint256[9] randomDNA;
     // Get random number between 0 and 255
-
-    // Push to an array
-
-    // Loop 9 times
+    for (i = 0; i = 9; i++) {
+      randomDNA.push(getPseudoRandomNumber());
+    }
 
     // Check if the DNA calculated is unique
-
-    // If not, try again
-
-    // If it is, return it
+    if (_dnasToTokenId[keccak256(abi.encodePacked(randomDNA))]) {
+      revert("Calculated DNA not unique");
+    } else {
+      return randomDNA;
+    }
   }
+
+// Get random number to calculate Moli's DNA
+  function getPseudoRandomNumber() internal returns (uint256) {
+    return uint(keccak256(abi.encodePacked(msg.sender, nonce))) % 256;
+  }
+
+// Get Moli status
+function getMoliStatus(uint256 tokenId) 
+  public 
+  view 
+  doesMoliExists 
+  returns (string memory) 
+{
+  uint256 mostNeeded = 0;
+
+  string[4] memory goodStatus = ["WAGMI", "Can't feel better!", "I'm great, thank you!", "I (L) you"];
+
+  string memory status = goodStatus[block.number % 4];
+
+  uint256 hunger = getHunger(tokenId);
+  uint256 boredom = getBoredom(tokenId);
+  uint256 uncleanliness = getUncleanliness(tokenId);
+
+  if (isAlive(tokenId) === false) return "This Moli is no longer with us";
+
+  if (hunger > 50 && hunger > mostNeeded) {
+    mostNeeded = hunger;
+    status = "I'm hungry. Feed me, please!"
+  }
+
+  if (uncleanliness > 50 && uncleanliness > mostNeeded) {
+    mostNeeded = uncleanliness;
+    status = "I'm feeling gross. Clean me, please!";
+  }
+
+  if (boredom > 50 && boredom > mostNeeded) {
+    mostNeeded = boredom;
+    status = "I'm extremely bored. Play with me, please!";
+  }
+
+  return status;
+}  
 
   // Token URI
 
@@ -153,17 +241,18 @@ contract Moli is
   }
 
   modifier doesItWantToPlay() {
-    require(getSadness(tokenId) < 80, "I'm too sad to play");
-    require(getLoneliness(tokenId) < 80, "I'm feeling too alone to play");
+    require(getBoredom() > 0, "I don't need to play");
+    require(getHunger(tokenId) < 80, "I'm too hungry to play");
+    require(getUncleanliness(tokenId) < 80, "I'm feeling too gross to play");
   }
 
-  modifier doesItWantToTakeAWalk() {
-    require(getBoredom(tokenId) < 80, "I'm too bored to take a walk");
-    require(getLoneliness(tokenId) < 80, "I'm feeling too alone to walk");
+  modifier doesItWantToEat() {
+    require(getBoredom(tokenId) < 80, "I'm too sad to eat");
+    require(getUncleanliness(tokenId) < 80, "I'm feeling too gross to eat");
   }
 
-  modifier doesItWantToSync() {
-    require(getBoredom(tokenId) < 80, "I'm too bored to sync with you");
-    require(getSadness(tokenId) < 80, "I'm feeling too alone to sync");
+  modifier doesItWantToGetClean() {
+    require(getBoredom(tokenId) < 80, "I'm too bored to get clean");
+    require(getHunger(tokenId) < 80, "I'm too hungry to get clean");
   }
 }
